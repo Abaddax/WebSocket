@@ -165,8 +165,6 @@ namespace WebSocket
                     if (completed_header)
                     {
                         Message.Payload = new byte[Message.Payload_Length];
-                        if (Message.Payload_Length == 0)
-                            Console.WriteLine("Message Length == 0");
 
                         int read = 0;
                         try
@@ -407,6 +405,7 @@ namespace WebSocket
             {
                 case Opcode.continuation:
                     {
+                        //Not supported
                         return -1;
                     }
                 case Opcode.binary:
@@ -446,7 +445,33 @@ namespace WebSocket
                     {
                         frame.FIN = true;
                         frame.OPCODE = Code;
-                        frame.MASK = false;
+
+                        //Client?
+                        if(url==null)
+                            frame.MASK = false;
+                        else
+                            frame.MASK = true;
+
+                        if (frame.MASK)
+                        {
+                            frame.MASK_KEY = new byte[4];
+                            Random rand = new Random();
+                            rand.NextBytes(frame.MASK_KEY);
+                        }
+                        if (Payload != null)
+                        {
+                            frame.Payload_Length = Payload.Length;
+                            frame.Payload = new byte[frame.Payload_Length];
+                            System.Buffer.BlockCopy(Payload, 0, frame.Payload, 0, Payload.Length);
+                            if (frame.MASK)
+                            {
+                                for (int i = 0; i < frame.Payload.Length; i++)
+                                {
+                                    frame.Payload[i] = (byte)(frame.Payload[i] ^ frame.MASK_KEY[i % 4]);
+                                }
+                            }
+                        }
+
                         int ret = SendWebSocketFrame(frame);
                         if (ret < 0)
                             return -1;
@@ -496,6 +521,7 @@ namespace WebSocket
         /// </summary>
         private void OnCloseReceived(in WebSocketFrame closeframe)
         {
+            SendPayload(closeframe.Payload, Opcode.close, false);
             if (TryClose())
             {
                 OnClosed?.Invoke(this, Encoding.UTF8.GetString(closeframe.Payload));
@@ -507,7 +533,7 @@ namespace WebSocket
         /// </summary>
         private void OnReceiveError()
         {
-            SendPayload(Encoding.UTF8.GetBytes("1003"), Opcode.close, false);
+            SendPayload(new byte[] { 0x03, 0xEB }, Opcode.close, false);
             if (TryClose())
             {
                 OnClosed?.Invoke(this, "1003");
@@ -667,11 +693,23 @@ namespace WebSocket
         #endregion
 
         #region Connect
+        /// <summary>
+        /// Connect WebSocket to Url
+        /// </summary>
+        /// <param name="Url">
+        /// <para>ws://1.2.3.4:5678</para>
+        /// <para>wss://1.2.3.4:5678</para>
+        /// </param>
+        /// <returns>
+        /// <para>0:OK</para>
+        /// <para>-1:Error</para>
+        /// </returns>
         public int Connect(string Url)
-        {
-            url = Url;
+        {            
             if (Url == null || connected == true || threadRunning == true)
                 return -1;
+
+            url = Url;
 
             int ret = WebSocketHandshake(url, 5000, out path);
             if (ret != 0)
@@ -687,28 +725,43 @@ namespace WebSocket
             StartThread();
             return 0;
         }
+        /// <summary>
+        /// Connect WebSocket to constructor-defined Url
+        /// </summary>
+        /// <returns>
+        /// <para>0:OK</para>
+        /// <para>-1:Error</para>
+        /// </returns>
         public int Connect()
         {
             return Connect(url);
         }
-        
+
         #endregion
 
         #region Close
+        /// <summary>
+        /// Closes WebSocket-Connection
+        /// </summary>
         public void Close()
         {
             if (disposedValue)
                 throw new ObjectDisposedException(this.GetType().FullName);
 
             if (connected == true)
-                SendPayload(Encoding.UTF8.GetBytes("1000"), Opcode.close, false);
+                SendPayload(new byte[] { 0x03, 0xE8 }, Opcode.close, false);
+            //SendPayload(BitConverter.GetBytes(IPAddress.HostToNetworkOrder(1000)), Opcode.close, false);
             if (TryClose())
             {
                 StopThread();
-                OnClosed?.Invoke(this, "");
+                OnClosed?.Invoke(this, "1000");
                 Console.WriteLine("Connection Closed");
             }
         }
+        /// <summary>
+        /// Close Event-Handler
+        /// <para>After the connection got already closed</para>
+        /// </summary>
         public event EventHandler<string> OnClosed;
         #endregion
 
@@ -717,7 +770,27 @@ namespace WebSocket
         public TProtocol Protocol { get { if (disposedValue) throw new ObjectDisposedException(this.GetType().FullName); return protocol; } }
         public string Path { get { if (disposedValue) throw new ObjectDisposedException(this.GetType().FullName); return path; } }
         public bool IsConnected { get { return connected; } }
-
+        public EndPoint LocalEndpoint
+        {
+            get
+            {
+                IPEndPoint ep = (IPEndPoint)client?.Client?.LocalEndPoint;
+                if (ep == null)
+                    return null;
+                return new IPEndPoint(ep.Address, ep.Port);
+            }
+        }
+        public EndPoint RemoteEndpoint
+        {
+            get
+            {
+                IPEndPoint ep = (IPEndPoint)client?.Client?.RemoteEndPoint;;
+                if (ep == null)
+                    return null;
+                return new IPEndPoint(ep.Address, ep.Port);
+            }
+        }
+        
 
         protected virtual void Dispose(bool disposing)
         {
@@ -728,7 +801,7 @@ namespace WebSocket
                 client?.Close();
                 if (disposing)
                 {
-                    // TODO: Verwalteten Zustand (verwaltete Objekte) bereinigen
+                    // Verwalteten Zustand (verwaltete Objekte) bereinigen
                     Close();
                     connected = false;
                     client = null;
@@ -736,8 +809,8 @@ namespace WebSocket
                     path = null;
                     url = null;
                 }
-                // TODO: Nicht verwaltete Ressourcen (nicht verwaltete Objekte) freigeben und Finalizer überschreiben
-                // TODO: Große Felder auf NULL setzen
+                // Nicht verwaltete Ressourcen (nicht verwaltete Objekte) freigeben und Finalizer überschreiben
+                // Große Felder auf NULL setzen
                 StopThread();
 
                 disposedValue = true;
