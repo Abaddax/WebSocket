@@ -32,128 +32,7 @@ namespace WebSocket
 
         private readonly ConcurrentDictionary<string, WebSocketProtocolInfo> availabeServices = new();
 
-
-        #region Private Static Helpers
-        /*static private int memcmp(byte[] a1, int offset_a1, byte[] b1, int offset_b1, int count)
-        {
-            if (a1 == null || b1 == null || count < 0 || offset_a1 < 0 || offset_b1 < 0)
-            {
-                throw new ArgumentOutOfRangeException();
-            }
-            for (int i = 0; i < count; i++)
-            {
-                if (a1.Length - (i + offset_a1) < 0 || b1.Length - (i + offset_b1) < 0)
-                    throw new Exception();
-                if (a1[i + offset_a1] < b1[i + offset_b1])
-                    return -1;
-                if (a1[i + offset_a1] > b1[i + offset_b1])
-                    return 1;
-            }
-            return 0;
-        }
-        static private string PadClientPath(string path)
-        {
-            if (path == null)
-                path = "/";
-            if (path[0] != '/')
-                path = '/' + path;
-            if (path[path.Length - 1] != '/')
-                path = path + '/';
-            return path;
-        }
-        static private byte[] ReadHTTPMessage(NetworkStream stream, int timeout, CancellationToken? cancellationToken)
-        {
-            byte[] terminator = { 13, 10, 13, 10 };
-            List<byte> bytes = new List<byte>();
-            DateTime begin = DateTime.Now;
-            bool done = false;
-
-            //Reading TCP-Data
-            while (!done)
-            {
-                try
-                {
-                    if (stream.DataAvailable)
-                    {
-                        int ret = stream.ReadByte();
-                        if (ret >= 0 && ret < 256)
-                            bytes.Add((byte)ret);
-                    }
-                    else
-                    {
-                        cancellationToken?.WaitHandle.WaitOne(100);
-                        //Thread.Sleep(1);
-                    }
-                }
-                catch (System.IO.IOException) { return Array.Empty<byte>(); }
-                catch (ObjectDisposedException) { return Array.Empty<byte>(); }
-
-                if (bytes.Count > 3)
-                {
-                    //Looking for HTTPheader-EndPoint
-                    if (memcmp(bytes.ToArray(), bytes.Count - 4, terminator, 0, 4) == 0)
-                    {
-                        done = true;
-                    }
-                }
-                //Timeout
-                if ((cancellationToken?.IsCancellationRequested ?? true) || (timeout > 0 && (DateTime.Now - begin).TotalMilliseconds > timeout))
-                {
-                    return Array.Empty<byte>();
-                }
-            }
-            return bytes.ToArray();
-        }
-        
-        static private int HandleWebSocketRequest(string httpMessage, string path, string protocolName, out byte[] response, out string clientPath)
-        {
-            clientPath = null;
-            const string eol = "\r\n";
-            //No Get-Request
-            if (!Regex.IsMatch(httpMessage, "^GET"))
-            {
-                response = Encoding.UTF8.GetBytes("HTTP/1.1 400 Bad Request" + eol + eol);
-                return -1;
-            }
-            //Wrong HTTP Version
-            if (!Regex.IsMatch(httpMessage, "^.*HTTP/1.1"))
-            {
-                response = Encoding.UTF8.GetBytes("HTTP/1.1 505 HTTP Version Not Supported" + eol + eol);
-                return -1;
-            }
-            if (path == null || Regex.IsMatch(httpMessage, "^GET(.*" + path + ")"))
-            {
-                //HTTP-Request
-                //Checking for OCPP-Websocket-Parameters
-                if (Regex.IsMatch(httpMessage, "Connection: (.*Upgrade)") &&
-                    Regex.IsMatch(httpMessage, "Upgrade: (.*websocket)") &&
-                    Regex.IsMatch(httpMessage, "Sec-WebSocket-Protocol: (.*" + protocolName + ")"))
-                {
-                    //Valid OCPP-Websocket Request
-                    string key = Regex.Match(httpMessage, "Sec-WebSocket-Key: (.*)").Groups[1].Value.Trim();
-                    string hash;
-                    using (System.Security.Cryptography.SHA1 sha1 = System.Security.Cryptography.SHA1.Create())
-                    {
-                        hash = Convert.ToBase64String(sha1.ComputeHash(Encoding.UTF8.GetBytes(key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11")));
-                    }
-                    response = Encoding.UTF8.GetBytes(
-                        "HTTP/1.1 101 Switching Protocols" + eol +
-                        "Upgrade: websocket" + eol +
-                        "Connection: Upgrade" + eol +
-                        "Sec-WebSocket-Accept: " + hash + eol +
-                        "Sec-WebSocket-Protocol: " + protocolName + eol + eol);
-
-                    clientPath = WebSocketHelper.PadClientPath(Regex.Match(httpMessage, "(?<=^GET )(.*)(?= HTTP)").Value);
-                    return 0;
-                }
-            }
-            response = Encoding.UTF8.GetBytes("HTTP/1.1 404 Not Found" + eol + eol);
-            return -1;
-        }
-        */
-        
-        #endregion
-        
+      
         #region Private Functions
         private int ListenThreadFunc()
         {
@@ -252,6 +131,9 @@ namespace WebSocket
             listener = new TcpListener(address, port);
         }
 
+        /// <summary>
+        /// Start listening for clients
+        /// </summary>
         public void Start()
         {
             if (disposedValue)
@@ -266,6 +148,10 @@ namespace WebSocket
                     StartThread();
             }
         }
+        /// <summary>
+        /// Stop listening for clients
+        /// <para>Does not close existing client connections</para>
+        /// </summary>
         public void Stop()
         {
             if (disposedValue)
@@ -281,6 +167,15 @@ namespace WebSocket
             }
         }
 
+        /// <summary>
+        /// Adds a WebSocket-Service to the listener
+        /// </summary>
+        /// <param name="path">Path the WebSocket can request</param>
+        /// <param name="NewClientHandler">Gets called when a new WebSocket-Connection got established for this service</param>
+        /// <returns>
+        /// <para>0: OK</para>
+        /// <para>-1: already a service on this path</para>
+        /// </returns>
         public int AddService<TProtocol>(string path, OnWebSocketConnected<TProtocol> NewClientHandler) where TProtocol : WebSocketProtocol, new()
         {
             if (disposedValue)
@@ -295,6 +190,13 @@ namespace WebSocket
                 Event = NewClientHandler
             }) ? 0 : -1;
         }
+        /// <summary>
+        /// Remopves a WebSocket-Service
+        /// </summary>
+        /// <returns>
+        /// <para>0: OK</para>
+        /// <para>-1: no service found for the path</para>
+        /// </returns>
         public int RemoveService(string path)
         {
             if (disposedValue)
@@ -305,6 +207,29 @@ namespace WebSocket
         }
 
         public bool Listening { get { return listening; } }
+        public string[] Services
+        {
+            get
+            {
+                List<string> ret = new List<string>();
+                foreach (var entry in availabeServices)
+                {
+                    ret.Add(entry.Key);
+                }
+                return ret.ToArray();
+            }
+        }
+        public EndPoint LocalEndpoint
+        {
+            get
+            {
+                IPEndPoint ep = (IPEndPoint)listener?.LocalEndpoint;
+                if (ep == null)
+                    return null;
+                return new IPEndPoint(ep.Address, ep.Port);
+            }
+        }
+       
 
         protected virtual void Dispose(bool disposing)
         {
@@ -312,13 +237,13 @@ namespace WebSocket
             {
                 if (disposing)
                 {
-                    // TODO: Verwalteten Zustand (verwaltete Objekte) bereinigen
+                    // Verwalteten Zustand (verwaltete Objekte) bereinigen
                     Stop();
                     availabeServices.Clear();
                     listening = false;
                 }
-                // TODO: Nicht verwaltete Ressourcen (nicht verwaltete Objekte) freigeben und Finalizer überschreiben
-                // TODO: Große Felder auf NULL setzen                
+                // Nicht verwaltete Ressourcen (nicht verwaltete Objekte) freigeben und Finalizer überschreiben
+                // Große Felder auf NULL setzen                
                 abortToken?.Cancel();
                 listener.Stop();
                 listener.Server?.Dispose();
