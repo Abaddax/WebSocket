@@ -33,6 +33,10 @@ namespace WebSocket
             }
             return 0;
         }
+        /// <summary>
+        /// Padding the path
+        /// </summary>
+        /// <returns>Padded path</returns>
         public static string PadClientPath(string path)
         {
             if (path == null || path.Length == 0)
@@ -43,6 +47,17 @@ namespace WebSocket
                 path = path + '/';
             return path;
         }
+        /// <summary>
+        /// Parsing the WebSocket URL to endPoint and Path
+        /// </summary>
+        /// <param name="url">
+        /// <para>ws://1.2.3.4:5678</para>
+        /// <para>wss://1.2.3.4:5678</para>
+        /// </param>
+        /// <returns>
+        /// <para>0: OK</para>
+        /// <para>-1: Error</para>
+        /// </returns>
         public static int ParseWebSocketURL(string url, out IPEndPoint endPoint, out string path)
         {
             endPoint = null;
@@ -62,6 +77,13 @@ namespace WebSocket
             return -1;
         }
 
+        /// <summary>
+        /// Reading a HTTP-Message from stream
+        /// </summary>
+        /// <returns>HTTP-Message
+        /// <para>length>0: Message</para>
+        /// <para>length=0: Timout or Cancel</para>
+        /// </returns>
         public static byte[] ReadHTTPMessage(NetworkStream stream, int timeout, CancellationToken? cancellationToken)
         {
             byte[] terminator = { 13, 10, 13, 10 };//\r\n\r\n
@@ -104,7 +126,13 @@ namespace WebSocket
             }
             return bytes.ToArray();
         }
-
+        /// <summary>
+        /// Handler for WebSocket Requests
+        /// </summary>
+        /// <returns>
+        /// <para>0:OK -> Response contains WebSocket-Handshake message</para>
+        /// <para>-1:Error -> Response contains HTTP-Error Message</para>
+        /// </returns>
         public static int HandleWebSocketClientRequest(string httpMessage, string path, string protocolName, out byte[] response, out string clientPath)
         {
             clientPath = null;
@@ -151,6 +179,13 @@ namespace WebSocket
             response = Encoding.UTF8.GetBytes("HTTP/1.1 404 Not Found" + eol + eol);
             return -1;
         }
+        /// <summary>
+        /// Creating a WebSocket-Request Message
+        /// </summary>
+        /// <returns>
+        /// <para>0:OK</para>
+        /// <para>-1:Error</para>
+        /// </returns>
         public static int CreateWebSocketRequest(string host, string path, string protocolName, out string key, out byte[] request)
         {
             request = null;
@@ -188,6 +223,13 @@ namespace WebSocket
             request = Encoding.UTF8.GetBytes(sb.ToString());
             return 0;
         }
+        /// <summary>
+        /// Handles The WebSocket-Response from a server
+        /// </summary>
+        /// <returns>
+        /// <para>0:OK</para>
+        /// <para>-1: Error or request denied</para>
+        /// </returns>
         public static int HandleWebSocketServerResponse(string httpMessage, string protocolName, string key)
         {
             if (httpMessage == null)
