@@ -8,10 +8,17 @@
         public abstract string ProtocolName { get; }
 
         #region Protocol protected
+        /// <summary>
+        /// Send data over WebSocket
+        /// </summary>
         protected void Send(byte[] data, Opcode code)
         {
             sendFunc?.Invoke(data, code);
         }
+        /// <summary>
+        /// Data-Handler for received data over WebSocket
+        /// <para>automatically called by WebSocket (from WebSocket-ListenThread)</para>
+        /// </summary>
         protected abstract void HandleReceive(byte[] data, Opcode code);
         #endregion
 
